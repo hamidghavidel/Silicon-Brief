@@ -1,0 +1,8 @@
+.vscode
+.idea
+env.yaml
+.DS_Store
+*.csv
+*.ez
+.build
+settings.local.json
