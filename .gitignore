@@ -8,3 +8,4 @@
 settings.local.json
 *.db
 silicon-brief
+silicon-brief.db
