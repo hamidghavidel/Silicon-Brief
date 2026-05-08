@@ -43,12 +43,26 @@ func run() error {
 	// Build tier-specific fetchers
 	tierFetchers := buildTierFetchers(cfg.Sources)
 
-	// Launch each tier concurrently
+	// Check which tiers are enabled
+	tierEnabled := map[int]bool{
+		1: cfg.Feed.Tier1Enabled,
+		2: cfg.Feed.Tier2Enabled,
+		3: cfg.Feed.Tier3Enabled,
+		4: cfg.Feed.Tier4Enabled,
+	}
+
+	// Launch each enabled tier concurrently
 	tierResults := make(chan tierResult, 4)
+	activeTiers := 0
 	for tier, fetchers := range tierFetchers {
 		if len(fetchers) == 0 {
 			continue
 		}
+		if !tierEnabled[tier] {
+			log.Printf("Tier %d is disabled, skipping", tier)
+			continue
+		}
+		activeTiers++
 		go func(t int, f []fetcher.Fetcher) {
 			count := processTier(ctx, t, f, pub, st, cfg)
 			tierResults <- tierResult{tier: t, count: count}
@@ -57,12 +71,10 @@ func run() error {
 
 	// Collect results
 	totalPublished := 0
-	tiersProcessed := 0
-	for range tierFetchers {
+	for i := 0; i < activeTiers; i++ {
 		res := <-tierResults
 		log.Printf("Tier %d finished. Published %d stories.", res.tier, res.count)
 		totalPublished += res.count
-		tiersProcessed++
 	}
 
 	log.Printf("All tiers complete. Total published: %d new stories.", totalPublished)
