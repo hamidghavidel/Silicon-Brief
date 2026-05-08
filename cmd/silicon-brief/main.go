@@ -103,6 +103,17 @@ func run() error {
 
 		publishedCount++
 		log.Printf("Published: %s", story.Title)
+
+		// Wait before publishing next story to avoid spamming
+		if publishedCount < len(topStories) {
+			log.Printf("Waiting %s before next publish...", cfg.Feed.PublishDelay)
+			select {
+			case <-time.After(cfg.Feed.PublishDelay):
+			case <-ctx.Done():
+				log.Println("Context cancelled, stopping publish loop")
+				return nil
+			}
+		}
 	}
 
 	log.Printf("Done. Published %d new stories.", publishedCount)
