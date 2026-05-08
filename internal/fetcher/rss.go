@@ -42,15 +42,11 @@ func (r *RSSFetcher) Fetch(ctx context.Context) ([]Story, error) {
 	}
 	req.Header.Set("User-Agent", "Silicon-Brief/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRetry(ctx, req, 2)
 	if err != nil {
 		return nil, fmt.Errorf("rss %s: fetch: %w", r.name, err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("rss %s: unexpected status %d", r.name, resp.StatusCode)
-	}
 
 	var feed rssFeed
 	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
@@ -82,6 +78,11 @@ func parseRSSDate(s string) time.Time {
 		time.RFC3339,
 		"Mon, 02 Jan 2006 15:04:05 -0700",
 		"2006-01-02T15:04:05Z",
+		"Mon, 2 Jan 2006 15:04:05 MST",
+		"Mon, 2 Jan 2006 15:04:05 -0700",
+		"2006-01-02T15:04:05-07:00",
+		"2006-01-02T15:04:05+00:00",
+		"2006-01-02 15:04:05",
 	}
 	for _, f := range formats {
 		if t, err := time.Parse(f, s); err == nil {

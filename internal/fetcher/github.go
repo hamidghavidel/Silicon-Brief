@@ -29,15 +29,11 @@ func (g *GitHubFetcher) Fetch(ctx context.Context) ([]Story, error) {
 	}
 	req.Header.Set("User-Agent", "Silicon-Brief/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRetry(ctx, req, 2)
 	if err != nil {
 		return nil, fmt.Errorf("github: fetch: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github: unexpected status %d", resp.StatusCode)
-	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {

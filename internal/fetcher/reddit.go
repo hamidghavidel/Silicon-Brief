@@ -42,15 +42,11 @@ func (r *RedditFetcher) Fetch(ctx context.Context) ([]Story, error) {
 	}
 	req.Header.Set("User-Agent", "Silicon-Brief/1.0 (by /u/siliconbrief)")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRetry(ctx, req, 2)
 	if err != nil {
 		return nil, fmt.Errorf("reddit: fetch: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("reddit: unexpected status %d", resp.StatusCode)
-	}
 
 	var result redditResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

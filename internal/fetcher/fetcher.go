@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"log"
 	"time"
 )
 
@@ -40,7 +41,7 @@ func FetchAll(ctx context.Context, fetchers []Fetcher) ([]Story, error) {
 	for i := 0; i < len(fetchers); i++ {
 		res := <-results
 		if res.err != nil {
-			// Log error but continue with other sources
+			log.Printf("fetcher error: %v", res.err)
 			continue
 		}
 		allStories = append(allStories, res.stories...)

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -71,6 +72,7 @@ func (s *Store) Close() error {
 }
 
 func hashURL(url string) string {
-	// Simple hash - in production use a proper hash
-	return fmt.Sprintf("%x", url)
+	h := sha256.New()
+	h.Write([]byte(url))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }

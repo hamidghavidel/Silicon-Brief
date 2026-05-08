@@ -59,11 +59,10 @@ func (p *Publisher) Publish(ctx context.Context, story scorer.ScoredStory) error
 func formatMessage(story scorer.ScoredStory) string {
 	return fmt.Sprintf(
 		"<b>%s</b>\n\n"+
-		"📰 <a href=\"%s\">%s</a>\n"+
-		"🏷 Source: %s | Score: %.1f\n",
+			"🔗 <a href=\"%s\">Read more</a>\n"+
+			"🏷 Source: %s | Score: %.1f\n",
 		story.Title,
 		story.URL,
-		story.Title,
 		story.Source,
 		story.FinalScore,
 	)

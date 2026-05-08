@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -46,6 +47,16 @@ func Load() (*Config, error) {
 	firebaseSA := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
 	if firebaseSA == "" {
 		return nil, fmt.Errorf("FIREBASE_SERVICE_ACCOUNT_JSON is required")
+	}
+
+	if !strings.HasPrefix(botToken, "bot") && !strings.HasPrefix(botToken, "1") && !strings.HasPrefix(botToken, "2") && !strings.HasPrefix(botToken, "3") && !strings.HasPrefix(botToken, "4") && !strings.HasPrefix(botToken, "5") && !strings.HasPrefix(botToken, "6") && !strings.HasPrefix(botToken, "7") && !strings.HasPrefix(botToken, "8") && !strings.HasPrefix(botToken, "9") && !strings.HasPrefix(botToken, "0") {
+		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN appears invalid")
+	}
+	if !strings.HasPrefix(channelID, "-") && !strings.HasPrefix(channelID, "@") {
+		return nil, fmt.Errorf("TELEGRAM_CHANNEL_ID must start with '-' (numeric) or '@' (username)")
+	}
+	if strings.Contains(firebaseProjectID, " ") {
+		return nil, fmt.Errorf("FIREBASE_PROJECT_ID cannot contain spaces")
 	}
 
 	return &Config{
