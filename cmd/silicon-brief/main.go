@@ -44,7 +44,7 @@ func run() error {
 	tierFetchers := buildTierFetchers(cfg.Sources)
 
 	// Launch each tier concurrently
-	tierResults := make(chan tierResult, 3)
+	tierResults := make(chan tierResult, 4)
 	for tier, fetchers := range tierFetchers {
 		if len(fetchers) == 0 {
 			continue
@@ -117,8 +117,8 @@ func processTier(ctx context.Context, tier int, fetchers []fetcher.Fetcher, pub 
 	log.Printf("[Tier %d] After dedup: %d stories", tier, len(uniqueStories))
 
 	var storiesToPublish []fetcher.Story
-	if tier == 1 {
-		// Tier 1: filter by age, cap max posts, no ranking
+	if tier == 1 || tier == 4 {
+		// Tier 1 & 4: filter by age, cap max posts, no ranking
 		cutoff := time.Now().Add(-time.Duration(cfg.Feed.Tier1MaxAgeHours) * time.Hour)
 		for _, story := range uniqueStories {
 			if story.PublishedAt.After(cutoff) {
