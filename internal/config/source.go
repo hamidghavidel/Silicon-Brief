@@ -5,5 +5,6 @@ type Source struct {
 	Name   string  `json:"name"`
 	URL    string  `json:"url"`
 	Weight float64 `json:"weight"`
-	Type   string  `json:"type"` // "rss", "hackernews", "reddit", "github"
+	Type   string  `json:"type"` // "rss", "hackernews", "reddit", "github", "claudeblog"
+	Tier   int     `json:"tier"` // 1 = priority (publish all), 2 = normal, 3 = low priority
 }

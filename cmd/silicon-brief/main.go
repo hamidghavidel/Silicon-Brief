@@ -21,7 +21,7 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	// Load configuration
@@ -39,6 +39,12 @@ func run() error {
 
 	// Initialize publisher
 	pub := publisher.New(cfg.Telegram.BotToken, cfg.Telegram.ChannelID)
+
+	// Build source tier lookup
+	tierBySource := make(map[string]int)
+	for _, src := range cfg.Sources {
+		tierBySource[src.Name] = src.Tier
+	}
 
 	// Build fetchers from config
 	var fetchers []fetcher.Fetcher
@@ -70,52 +76,112 @@ func run() error {
 	uniqueStories := d.Dedup(allStories)
 	log.Printf("After dedup: %d stories", len(uniqueStories))
 
-	// Score and rank
-	var scored []scorer.ScoredStory
-	for _, story := range uniqueStories {
-		scored = append(scored, scorer.Score(story, cfg.Feed.Keywords))
+	// Group stories by tier
+	tierStories := map[int][]fetcher.Story{
+		1: {},
+		2: {},
+		3: {},
 	}
-	ranked := scorer.Rank(scored)
-	topStories := scorer.TopN(ranked, cfg.Feed.MaxPosts)
-	log.Printf("Top %d stories selected", len(topStories))
+	for _, story := range uniqueStories {
+		tier := tierBySource[story.Source]
+		if tier == 0 {
+			tier = 2 // default fallback
+		}
+		tierStories[tier] = append(tierStories[tier], story)
+	}
 
-	// Publish new stories
 	publishedCount := 0
-	for _, story := range topStories {
-		isPublished, err := st.IsPublished(ctx, story.Story)
-		if err != nil {
-			log.Printf("Error checking published status for %s: %v", story.Title, err)
-			continue
-		}
-		if isPublished {
-			continue
-		}
 
-		if err := pub.Publish(ctx, story); err != nil {
-			log.Printf("Error publishing %s: %v", story.Title, err)
-			continue
-		}
-
-		if err := st.MarkPublished(ctx, story.Story, story.FinalScore); err != nil {
-			log.Printf("Error marking published %s: %v", story.Title, err)
-			continue
-		}
-
-		publishedCount++
-		log.Printf("Published: %s", story.Title)
-
-		// Wait before publishing next story to avoid spamming
-		if publishedCount < len(topStories) {
-			log.Printf("Waiting %s before next publish...", cfg.Feed.PublishDelay)
-			select {
-			case <-time.After(cfg.Feed.PublishDelay):
-			case <-ctx.Done():
-				log.Println("Context cancelled, stopping publish loop")
-				return nil
+	// Tier 1: Publish ALL new posts (no ranking)
+	if len(tierStories[1]) > 0 {
+		log.Printf("Processing Tier 1: %d priority stories", len(tierStories[1]))
+		for _, story := range tierStories[1] {
+			if done, err := publishIfNew(ctx, pub, st, story, cfg.Feed.Keywords); err != nil {
+				log.Printf("Error publishing tier 1 story: %v", err)
+				continue
+			} else if done {
+				publishedCount++
+				if err := waitDelay(ctx, cfg.Feed.PublishDelay); err != nil {
+					return err
+				}
 			}
 		}
 	}
 
+	// Tier 2: Score, rank, publish top N
+	if len(tierStories[2]) > 0 {
+		log.Printf("Processing Tier 2: %d stories", len(tierStories[2]))
+		tier2Published := publishTier(ctx, pub, st, tierStories[2], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay)
+		publishedCount += tier2Published
+	}
+
+	// Tier 3: Score, rank, publish top N
+	if len(tierStories[3]) > 0 {
+		log.Printf("Processing Tier 3: %d stories", len(tierStories[3]))
+		tier3Published := publishTier(ctx, pub, st, tierStories[3], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay)
+		publishedCount += tier3Published
+	}
+
 	log.Printf("Done. Published %d new stories.", publishedCount)
 	return nil
+}
+
+// publishTier scores, ranks, and publishes the top N new stories from a tier.
+func publishTier(ctx context.Context, pub *publisher.Publisher, st *store.Store, stories []fetcher.Story, keywords []string, maxPosts int, delay time.Duration) int {
+	var scored []scorer.ScoredStory
+	for _, story := range stories {
+		scored = append(scored, scorer.Score(story, keywords))
+	}
+	ranked := scorer.Rank(scored)
+	topStories := scorer.TopN(ranked, maxPosts)
+
+	count := 0
+	for _, story := range topStories {
+		if done, err := publishIfNew(ctx, pub, st, story.Story, keywords); err != nil {
+			log.Printf("Error publishing tier story: %v", err)
+			continue
+		} else if done {
+			count++
+			if err := waitDelay(ctx, delay); err != nil {
+				return count
+			}
+		}
+	}
+	return count
+}
+
+// publishIfNew checks if a story is already published, and if not, publishes and marks it.
+func publishIfNew(ctx context.Context, pub *publisher.Publisher, st *store.Store, story fetcher.Story, keywords []string) (bool, error) {
+	isPublished, err := st.IsPublished(ctx, story)
+	if err != nil {
+		return false, fmt.Errorf("check published status for %s: %w", story.Title, err)
+	}
+	if isPublished {
+		return false, nil
+	}
+
+	scored := scorer.Score(story, keywords)
+
+	if err := pub.Publish(ctx, scored); err != nil {
+		return false, fmt.Errorf("publish %s: %w", story.Title, err)
+	}
+
+	if err := st.MarkPublished(ctx, story, scored.FinalScore); err != nil {
+		return false, fmt.Errorf("mark published %s: %w", story.Title, err)
+	}
+
+	log.Printf("Published: %s", story.Title)
+	return true, nil
+}
+
+// waitDelay sleeps for the given duration or returns an error if context is cancelled.
+func waitDelay(ctx context.Context, d time.Duration) error {
+	log.Printf("Waiting %s before next publish...", d)
+	select {
+	case <-time.After(d):
+		return nil
+	case <-ctx.Done():
+		log.Println("Context cancelled, stopping publish loop")
+		return ctx.Err()
+	}
 }
