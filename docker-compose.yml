@@ -4,9 +4,9 @@ services:
   silicon-brief:
     build: .
     container_name: silicon-brief
-    environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHANNEL_ID=${TELEGRAM_CHANNEL_ID}
+    env_file:
+      - .env
     volumes:
-      - ./data:/root/data
+      - ./data:/app/data
+      - ./silicon-brief.db:/app/silicon-brief.db
     restart: unless-stopped
