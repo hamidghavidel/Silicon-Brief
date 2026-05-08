@@ -1,6 +1,6 @@
 .vscode
 .idea
-env.yaml
+.env
 .DS_Store
 *.csv
 *.ez
