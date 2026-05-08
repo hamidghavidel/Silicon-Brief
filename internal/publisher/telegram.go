@@ -29,7 +29,7 @@ func New(botToken, channelID string) *Publisher {
 
 // Publish sends a story to the Telegram channel.
 func (p *Publisher) Publish(ctx context.Context, story scorer.ScoredStory) error {
-	message := formatMessage(story)
+	message := p.formatMessage(story)
 	apiEndpoint := fmt.Sprintf("%s%s/sendMessage", p.apiURL, p.botToken)
 
 	data := url.Values{}
@@ -58,14 +58,15 @@ func (p *Publisher) Publish(ctx context.Context, story scorer.ScoredStory) error
 	return nil
 }
 
-func formatMessage(story scorer.ScoredStory) string {
+func (p *Publisher) formatMessage(story scorer.ScoredStory) string {
 	return fmt.Sprintf(
 		"<b>%s</b>\n\n"+
 			"🔗 <a href=\"%s\">Read more</a>\n"+
-			"🏷 Source: %s | Score: %.1f\n",
+			"🏷 Source: %s\n"+
+			"📢 %s",
 		story.Title,
 		story.URL,
 		story.Source,
-		story.FinalScore,
+		p.channelID,
 	)
 }
