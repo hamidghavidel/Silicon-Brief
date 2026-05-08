@@ -7,3 +7,4 @@
 .build
 settings.local.json
 *.db
+silicon-brief
