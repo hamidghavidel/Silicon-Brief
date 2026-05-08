@@ -6,3 +6,4 @@
 *.ez
 .build
 settings.local.json
+*.db
