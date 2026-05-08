@@ -39,6 +39,9 @@ func run() error {
 
 	// Initialize publisher
 	pub := publisher.New(cfg.Telegram.BotToken, cfg.Telegram.ChannelID)
+	if !cfg.Telegram.PublishEnabled {
+		log.Println("Telegram publishing is disabled")
+	}
 
 	// Build source tier lookup
 	tierBySource := make(map[string]int)
@@ -96,7 +99,7 @@ func run() error {
 	if len(tierStories[1]) > 0 {
 		log.Printf("Processing Tier 1: %d priority stories", len(tierStories[1]))
 		for _, story := range tierStories[1] {
-			if done, err := publishIfNew(ctx, pub, st, story, cfg.Feed.Keywords); err != nil {
+			if done, err := publishIfNew(ctx, pub, st, story, cfg.Feed.Keywords, cfg.Telegram.PublishEnabled); err != nil {
 				log.Printf("Error publishing tier 1 story: %v", err)
 				continue
 			} else if done {
@@ -111,14 +114,14 @@ func run() error {
 	// Tier 2: Score, rank, publish top N
 	if len(tierStories[2]) > 0 {
 		log.Printf("Processing Tier 2: %d stories", len(tierStories[2]))
-		tier2Published := publishTier(ctx, pub, st, tierStories[2], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay)
+		tier2Published := publishTier(ctx, pub, st, tierStories[2], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay, cfg.Telegram.PublishEnabled)
 		publishedCount += tier2Published
 	}
 
 	// Tier 3: Score, rank, publish top N
 	if len(tierStories[3]) > 0 {
 		log.Printf("Processing Tier 3: %d stories", len(tierStories[3]))
-		tier3Published := publishTier(ctx, pub, st, tierStories[3], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay)
+		tier3Published := publishTier(ctx, pub, st, tierStories[3], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay, cfg.Telegram.PublishEnabled)
 		publishedCount += tier3Published
 	}
 
@@ -127,7 +130,7 @@ func run() error {
 }
 
 // publishTier scores, ranks, and publishes the top N new stories from a tier.
-func publishTier(ctx context.Context, pub *publisher.Publisher, st *store.Store, stories []fetcher.Story, keywords []string, maxPosts int, delay time.Duration) int {
+func publishTier(ctx context.Context, pub *publisher.Publisher, st *store.Store, stories []fetcher.Story, keywords []string, maxPosts int, delay time.Duration, publishEnabled bool) int {
 	var scored []scorer.ScoredStory
 	for _, story := range stories {
 		scored = append(scored, scorer.Score(story, keywords))
@@ -137,7 +140,7 @@ func publishTier(ctx context.Context, pub *publisher.Publisher, st *store.Store,
 
 	count := 0
 	for _, story := range topStories {
-		if done, err := publishIfNew(ctx, pub, st, story.Story, keywords); err != nil {
+		if done, err := publishIfNew(ctx, pub, st, story.Story, keywords, publishEnabled); err != nil {
 			log.Printf("Error publishing tier story: %v", err)
 			continue
 		} else if done {
@@ -151,7 +154,7 @@ func publishTier(ctx context.Context, pub *publisher.Publisher, st *store.Store,
 }
 
 // publishIfNew checks if a story is already published, and if not, publishes and marks it.
-func publishIfNew(ctx context.Context, pub *publisher.Publisher, st *store.Store, story fetcher.Story, keywords []string) (bool, error) {
+func publishIfNew(ctx context.Context, pub *publisher.Publisher, st *store.Store, story fetcher.Story, keywords []string, publishEnabled bool) (bool, error) {
 	isPublished, err := st.IsPublished(ctx, story)
 	if err != nil {
 		return false, fmt.Errorf("check published status for %s: %w", story.Title, err)
@@ -162,8 +165,12 @@ func publishIfNew(ctx context.Context, pub *publisher.Publisher, st *store.Store
 
 	scored := scorer.Score(story, keywords)
 
-	if err := pub.Publish(ctx, scored); err != nil {
-		return false, fmt.Errorf("publish %s: %w", story.Title, err)
+	if publishEnabled {
+		if err := pub.Publish(ctx, scored); err != nil {
+			return false, fmt.Errorf("publish %s: %w", story.Title, err)
+		}
+	} else {
+		log.Printf("[DRY RUN] Would publish: %s", story.Title)
 	}
 
 	if err := st.MarkPublished(ctx, story, scored.FinalScore); err != nil {
