@@ -16,7 +16,8 @@ func TestFormatMessage(t *testing.T) {
 		},
 		FinalScore: 85.5,
 	}
-	msg := formatMessage(story)
+	p := New("test-token", "@testchannel")
+	msg := p.formatMessage(story)
 	if msg == "" {
 		t.Fatal("expected non-empty message")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
 	"github.com/hamidghavidel/silicon-brief/internal/config"
@@ -154,6 +155,11 @@ func processTier(ctx context.Context, tier int, fetchers []fetcher.Fetcher, pub 
 		}
 		log.Printf("[Tier %d] Top %d stories selected", tier, len(storiesToPublish))
 	}
+
+	// Shuffle stories so different sources are intermixed
+	rand.Shuffle(len(storiesToPublish), func(i, j int) {
+		storiesToPublish[i], storiesToPublish[j] = storiesToPublish[j], storiesToPublish[i]
+	})
 
 	count := 0
 	for _, story := range storiesToPublish {
