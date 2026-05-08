@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,7 +51,8 @@ func (p *Publisher) Publish(ctx context.Context, story scorer.ScoredStory) error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram: unexpected status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram: unexpected status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	return nil

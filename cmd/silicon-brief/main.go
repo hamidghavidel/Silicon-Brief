@@ -52,6 +52,8 @@ func run() error {
 			fetchers = append(fetchers, fetcher.NewRedditFetcher(src.URL))
 		case "github":
 			fetchers = append(fetchers, fetcher.NewGitHubFetcher(src.URL))
+		case "claudeblog":
+			fetchers = append(fetchers, fetcher.NewClaudeBlogFetcher(src.URL))
 		}
 	}
 

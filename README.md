@@ -115,6 +115,7 @@ go test -race -cover ./...
 │   │   ├── hackernews.go          # Hacker News Algolia API
 │   │   ├── reddit.go              # Reddit JSON API
 │   │   ├── github.go              # GitHub Trending scraper
+│   │   ├── claudeblog.go          # Claude Blog scraper
 │   │   └── retry.go               # HTTP retry with backoff
 │   ├── scorer/scorer.go           # Ranking algorithm
 │   ├── dedup/dedup.go             # URL & fuzzy title deduplication
@@ -134,12 +135,13 @@ Stories are ranked by:
 ## Sources
 
 - OpenAI Blog (RSS)
+- OpenAI News (RSS)
 - Google AI Blog (RSS)
-- Anthropic Blog (RSS)
 - TechCrunch AI (RSS)
 - Hacker News (Algolia API)
 - Reddit (r/MachineLearning + r/technology + r/programming)
 - GitHub Trending (AI-filtered)
+- Claude Blog (HTML scraper)
 
 ## License
 
