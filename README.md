@@ -5,7 +5,7 @@ A zero-cost automated Telegram channel that aggregates, ranks, and publishes AI/
 ## Architecture
 
 ```
-GitHub Actions (cron: 0 * * * *)
+Systemd Timer (cron: 0 * * * *)
         |
         v
 +----------------------------+
@@ -22,27 +22,77 @@ GitHub Actions (cron: 0 * * * *)
 
 ## Setup
 
-### 1. Fork & Clone
+### 1. Clone & Build
 
 ```bash
 git clone https://github.com/hamidghavidel/silicon-brief.git
 cd silicon-brief
+go build -o silicon-brief ./cmd/silicon-brief
 ```
 
-### 2. Configure Secrets
+### 2. Configure Environment
 
-Go to **Settings > Secrets and variables > Actions** in your GitHub repository and add:
+Create `/etc/silicon-brief/service-account.json` with your Firebase service account key.
 
-| Secret | Description |
-|--------|-------------|
+Set these environment variables (e.g., in `~/.bashrc` or the systemd service file):
+
+| Variable | Description |
+|----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | From [@BotFather](https://t.me/botfather) |
 | `TELEGRAM_CHANNEL_ID` | Target channel ID (e.g., `-1001234567890` or `@channelname`) |
 | `FIREBASE_PROJECT_ID` | Firebase project identifier |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Base64-encoded service account key |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Path to service account JSON file |
 
-### 3. Enable GitHub Actions
+### 3. Deploy to VPS
 
-The workflow `.github/workflows/feed.yml` runs every hour automatically. You can also trigger it manually via **Actions > Hourly Feed > Run workflow**.
+```bash
+# Copy binary
+sudo cp silicon-brief /usr/local/bin/
+sudo chmod +x /usr/local/bin/silicon-brief
+
+# Create config directory
+sudo mkdir -p /etc/silicon-brief
+sudo cp service-account.json /etc/silicon-brief/
+
+# Copy and enable systemd service
+sudo cp silicon-brief.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now silicon-brief
+
+# Check status
+sudo systemctl status silicon-brief
+```
+
+### 4. Docker Deployment (Alternative)
+
+```bash
+# Create .env file
+cat > .env <<EOF
+TELEGRAM_BOT_TOKEN=your-token
+TELEGRAM_CHANNEL_ID=your-channel-id
+FIREBASE_PROJECT_ID=your-project
+FIREBASE_SERVICE_ACCOUNT_JSON=$(cat service-account.json | jq -c .)
+EOF
+
+# Build and run
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+### 5. Schedule with Cron
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add line to run every hour
+0 * * * * docker-compose -f /path/to/docker-compose.yml up --abort-on-container-exit >> /var/log/silicon-brief.log 2>&1
+```
 
 ## Local Development
 
