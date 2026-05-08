@@ -17,7 +17,7 @@ Systemd Timer (cron: 0 * * * *)
 +----------------------------+
         |
         v
-  Firebase Firestore (state)
+  SQLite (state)
 ```
 
 ## Setup
@@ -32,16 +32,12 @@ go build -o silicon-brief ./cmd/silicon-brief
 
 ### 2. Configure Environment
 
-Create `/etc/silicon-brief/service-account.json` with your Firebase service account key.
-
 Set these environment variables (e.g., in `~/.bashrc` or the systemd service file):
 
 | Variable | Description |
 |----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | From [@BotFather](https://t.me/botfather) |
 | `TELEGRAM_CHANNEL_ID` | Target channel ID (e.g., `-1001234567890` or `@channelname`) |
-| `FIREBASE_PROJECT_ID` | Firebase project identifier |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Path to service account JSON file |
 
 ### 3. Deploy to VPS
 
@@ -57,7 +53,7 @@ sudo cp service-account.json /etc/silicon-brief/
 # Copy and enable systemd service
 sudo cp silicon-brief.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now silicon-brief
+sudo systemctl enable silicon-brief
 
 # Check status
 sudo systemctl status silicon-brief
@@ -70,8 +66,6 @@ sudo systemctl status silicon-brief
 cat > .env <<EOF
 TELEGRAM_BOT_TOKEN=your-token
 TELEGRAM_CHANNEL_ID=your-channel-id
-FIREBASE_PROJECT_ID=your-project
-FIREBASE_SERVICE_ACCOUNT_JSON=$(cat service-account.json | jq -c .)
 EOF
 
 # Build and run
@@ -100,8 +94,6 @@ crontab -e
 # Set environment variables
 export TELEGRAM_BOT_TOKEN="your-token"
 export TELEGRAM_CHANNEL_ID="your-channel-id"
-export FIREBASE_PROJECT_ID="your-project"
-export FIREBASE_SERVICE_ACCOUNT_JSON="$(cat service-account.json)"
 
 # Run
 go run ./cmd/silicon-brief
@@ -126,7 +118,7 @@ go test -race -cover ./...
 │   │   └── retry.go               # HTTP retry with backoff
 │   ├── scorer/scorer.go           # Ranking algorithm
 │   ├── dedup/dedup.go             # URL & fuzzy title deduplication
-│   ├── store/firestore.go         # Published post tracking
+│   ├── store/sqlite.go            # Published post tracking
 │   └── publisher/telegram.go      # Telegram channel publisher
 ├── .github/workflows/feed.yml     # GitHub Actions cron job
 └── docs/PLAN.md                   # Design document

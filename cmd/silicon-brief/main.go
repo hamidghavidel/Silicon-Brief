@@ -25,20 +25,20 @@ func run() error {
 	defer cancel()
 
 	// Load configuration
-	cfg, err := config.Load()
+	cfg, err := config.Configure()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		log.Fatal(err)
 	}
 
 	// Initialize store
-	st, err := store.New(ctx, cfg.FirebaseProjectID, cfg.FirebaseServiceAccount)
+	st, err := store.New("silicon-brief.db")
 	if err != nil {
 		return fmt.Errorf("init store: %w", err)
 	}
 	defer st.Close()
 
 	// Initialize publisher
-	pub := publisher.New(cfg.TelegramBotToken, cfg.TelegramChannelID)
+	pub := publisher.New(cfg.Telegram.BotToken, cfg.Telegram.ChannelID)
 
 	// Build fetchers from config
 	var fetchers []fetcher.Fetcher
@@ -71,10 +71,10 @@ func run() error {
 	// Score and rank
 	var scored []scorer.ScoredStory
 	for _, story := range uniqueStories {
-		scored = append(scored, scorer.Score(story, cfg.Keywords))
+		scored = append(scored, scorer.Score(story, cfg.Feed.Keywords))
 	}
 	ranked := scorer.Rank(scored)
-	topStories := scorer.TopN(ranked, cfg.MaxPosts)
+	topStories := scorer.TopN(ranked, cfg.Feed.MaxPosts)
 	log.Printf("Top %d stories selected", len(topStories))
 
 	// Publish new stories

@@ -2,73 +2,33 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strings"
-	"time"
+	"log/slog"
+
+	"github.com/caarlos0/env/v11"
+	"github.com/joho/godotenv"
 )
 
-// Source represents a news source configuration.
-type Source struct {
-	Name   string
-	URL    string
-	Weight float64
-	Type   string // "rss", "hackernews", "reddit", "github"
-}
-
-// Config holds all application configuration.
+// Config is the top-level configuration.
 type Config struct {
-	TelegramBotToken       string
-	TelegramChannelID      string
-	FirebaseProjectID      string
-	FirebaseServiceAccount string
-	Sources                []Source
-	Keywords               []string
-	MaxPosts               int
-	FetchTimeout           time.Duration
+	App      App      `envPrefix:"APP_"`
+	Telegram Telegram `envPrefix:"TELEGRAM_"`
+	Feed     Feed     `envPrefix:"FEED_"`
+	Sources  []Source `envPrefix:"FEED_SOURCES"`
 }
 
-// Load reads configuration from environment variables.
-func Load() (*Config, error) {
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if botToken == "" {
-		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN is required")
+func Configure() (*Config, error) {
+	err := godotenv.Load(".env")
+	if err != nil {
+		slog.With("err", err.Error()).Error("reading .env file error")
 	}
 
-	channelID := os.Getenv("TELEGRAM_CHANNEL_ID")
-	if channelID == "" {
-		return nil, fmt.Errorf("TELEGRAM_CHANNEL_ID is required")
+	cfg := &Config{}
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("parsing configuration error: %w", err)
 	}
 
-	firebaseProjectID := os.Getenv("FIREBASE_PROJECT_ID")
-	if firebaseProjectID == "" {
-		return nil, fmt.Errorf("FIREBASE_PROJECT_ID is required")
-	}
-
-	firebaseSA := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
-	if firebaseSA == "" {
-		return nil, fmt.Errorf("FIREBASE_SERVICE_ACCOUNT_JSON is required")
-	}
-
-	if !strings.HasPrefix(botToken, "bot") && !strings.HasPrefix(botToken, "1") && !strings.HasPrefix(botToken, "2") && !strings.HasPrefix(botToken, "3") && !strings.HasPrefix(botToken, "4") && !strings.HasPrefix(botToken, "5") && !strings.HasPrefix(botToken, "6") && !strings.HasPrefix(botToken, "7") && !strings.HasPrefix(botToken, "8") && !strings.HasPrefix(botToken, "9") && !strings.HasPrefix(botToken, "0") {
-		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN appears invalid")
-	}
-	if !strings.HasPrefix(channelID, "-") && !strings.HasPrefix(channelID, "@") {
-		return nil, fmt.Errorf("TELEGRAM_CHANNEL_ID must start with '-' (numeric) or '@' (username)")
-	}
-	if strings.Contains(firebaseProjectID, " ") {
-		return nil, fmt.Errorf("FIREBASE_PROJECT_ID cannot contain spaces")
-	}
-
-	return &Config{
-		TelegramBotToken:       botToken,
-		TelegramChannelID:      channelID,
-		FirebaseProjectID:      firebaseProjectID,
-		FirebaseServiceAccount: firebaseSA,
-		Sources:                defaultSources(),
-		Keywords:               []string{"GPT", "LLM", "OpenAI", "Anthropic", "AI", "machine learning", "deep learning"},
-		MaxPosts:               15,
-		FetchTimeout:           30 * time.Second,
-	}, nil
+	cfg.Sources = defaultSources()
+	return cfg, nil
 }
 
 func defaultSources() []Source {
