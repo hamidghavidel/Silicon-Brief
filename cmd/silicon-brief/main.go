@@ -21,131 +21,136 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	// Load configuration
 	cfg, err := config.Configure()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Initialize store
 	st, err := store.New("silicon-brief.db")
 	if err != nil {
 		return fmt.Errorf("init store: %w", err)
 	}
 	defer st.Close()
 
-	// Initialize publisher
 	pub := publisher.New(cfg.Telegram.BotToken, cfg.Telegram.ChannelID)
 	if !cfg.Telegram.PublishEnabled {
 		log.Println("Telegram publishing is disabled")
 	}
 
-	// Build source tier lookup
-	tierBySource := make(map[string]int)
-	for _, src := range cfg.Sources {
-		tierBySource[src.Name] = src.Tier
-	}
+	// Build tier-specific fetchers
+	tierFetchers := buildTierFetchers(cfg.Sources)
 
-	// Build fetchers from config
-	var fetchers []fetcher.Fetcher
-	for _, src := range cfg.Sources {
-		switch src.Type {
-		case "rss":
-			fetchers = append(fetchers, fetcher.NewRSSFetcher(src.Name, src.URL))
-		case "hackernews":
-			fetchers = append(fetchers, fetcher.NewHNFetcher(src.URL))
-		case "reddit":
-			fetchers = append(fetchers, fetcher.NewRedditFetcher(src.URL))
-		case "github":
-			fetchers = append(fetchers, fetcher.NewGitHubFetcher(src.URL))
-		case "claudeblog":
-			fetchers = append(fetchers, fetcher.NewClaudeBlogFetcher(src.URL))
+	// Launch each tier concurrently
+	tierResults := make(chan tierResult, 3)
+	for tier, fetchers := range tierFetchers {
+		if len(fetchers) == 0 {
+			continue
 		}
+		go func(t int, f []fetcher.Fetcher) {
+			count := processTier(ctx, t, f, pub, st, cfg)
+			tierResults <- tierResult{tier: t, count: count}
+		}(tier, fetchers)
 	}
 
-	// Fetch all stories
-	log.Println("Fetching stories...")
-	allStories, err := fetcher.FetchAll(ctx, fetchers)
-	if err != nil {
-		return fmt.Errorf("fetch all: %w", err)
-	}
-	log.Printf("Fetched %d stories", len(allStories))
-
-	// Deduplicate
-	d := dedup.NewDeduplicator()
-	uniqueStories := d.Dedup(allStories)
-	log.Printf("After dedup: %d stories", len(uniqueStories))
-
-	// Group stories by tier
-	tierStories := map[int][]fetcher.Story{
-		1: {},
-		2: {},
-		3: {},
-	}
-	for _, story := range uniqueStories {
-		tier := tierBySource[story.Source]
-		if tier == 0 {
-			tier = 2 // default fallback
-		}
-		tierStories[tier] = append(tierStories[tier], story)
+	// Collect results
+	totalPublished := 0
+	tiersProcessed := 0
+	for range tierFetchers {
+		res := <-tierResults
+		log.Printf("Tier %d finished. Published %d stories.", res.tier, res.count)
+		totalPublished += res.count
+		tiersProcessed++
 	}
 
-	publishedCount := 0
-
-	// Tier 1: Publish ALL new posts (no ranking)
-	if len(tierStories[1]) > 0 {
-		log.Printf("Processing Tier 1: %d priority stories", len(tierStories[1]))
-		for _, story := range tierStories[1] {
-			if done, err := publishIfNew(ctx, pub, st, story, cfg.Feed.Keywords, cfg.Telegram.PublishEnabled); err != nil {
-				log.Printf("Error publishing tier 1 story: %v", err)
-				continue
-			} else if done {
-				publishedCount++
-				if err := waitDelay(ctx, cfg.Feed.PublishDelay); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Tier 2: Score, rank, publish top N
-	if len(tierStories[2]) > 0 {
-		log.Printf("Processing Tier 2: %d stories", len(tierStories[2]))
-		tier2Published := publishTier(ctx, pub, st, tierStories[2], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay, cfg.Telegram.PublishEnabled)
-		publishedCount += tier2Published
-	}
-
-	// Tier 3: Score, rank, publish top N
-	if len(tierStories[3]) > 0 {
-		log.Printf("Processing Tier 3: %d stories", len(tierStories[3]))
-		tier3Published := publishTier(ctx, pub, st, tierStories[3], cfg.Feed.Keywords, cfg.Feed.MaxPosts, cfg.Feed.PublishDelay, cfg.Telegram.PublishEnabled)
-		publishedCount += tier3Published
-	}
-
-	log.Printf("Done. Published %d new stories.", publishedCount)
+	log.Printf("All tiers complete. Total published: %d new stories.", totalPublished)
 	return nil
 }
 
-// publishTier scores, ranks, and publishes the top N new stories from a tier.
-func publishTier(ctx context.Context, pub *publisher.Publisher, st *store.Store, stories []fetcher.Story, keywords []string, maxPosts int, delay time.Duration, publishEnabled bool) int {
-	var scored []scorer.ScoredStory
-	for _, story := range stories {
-		scored = append(scored, scorer.Score(story, keywords))
+type tierResult struct {
+	tier  int
+	count int
+}
+
+// buildTierFetchers groups fetchers by their source tier.
+func buildTierFetchers(sources []config.Source) map[int][]fetcher.Fetcher {
+	m := map[int][]fetcher.Fetcher{}
+	for _, src := range sources {
+		var f fetcher.Fetcher
+		switch src.Type {
+		case "rss":
+			f = fetcher.NewRSSFetcher(src.Name, src.URL)
+		case "hackernews":
+			f = fetcher.NewHNFetcher(src.URL)
+		case "reddit":
+			f = fetcher.NewRedditFetcher(src.URL)
+		case "github":
+			f = fetcher.NewGitHubFetcher(src.URL)
+		case "claudeblog":
+			f = fetcher.NewClaudeBlogFetcher(src.URL)
+		}
+		if f != nil {
+			tier := src.Tier
+			if tier == 0 {
+				tier = 2
+			}
+			m[tier] = append(m[tier], f)
+		}
 	}
-	ranked := scorer.Rank(scored)
-	topStories := scorer.TopN(ranked, maxPosts)
+	return m
+}
+
+// processTier fetches, deduplicates, scores, and publishes stories for a single tier.
+func processTier(ctx context.Context, tier int, fetchers []fetcher.Fetcher, pub *publisher.Publisher, st *store.Store, cfg *config.Config) int {
+	log.Printf("[Tier %d] Fetching...", tier)
+	allStories, err := fetcher.FetchAll(ctx, fetchers)
+	if err != nil {
+		log.Printf("[Tier %d] Fetch error: %v", tier, err)
+		return 0
+	}
+	log.Printf("[Tier %d] Fetched %d stories", tier, len(allStories))
+
+	d := dedup.NewDeduplicator()
+	uniqueStories := d.Dedup(allStories)
+	log.Printf("[Tier %d] After dedup: %d stories", tier, len(uniqueStories))
+
+	var storiesToPublish []fetcher.Story
+	if tier == 1 {
+		// Tier 1: filter by age, cap max posts, no ranking
+		cutoff := time.Now().Add(-time.Duration(cfg.Feed.Tier1MaxAgeHours) * time.Hour)
+		for _, story := range uniqueStories {
+			if story.PublishedAt.After(cutoff) {
+				storiesToPublish = append(storiesToPublish, story)
+			}
+		}
+		if len(storiesToPublish) > cfg.Feed.Tier1MaxPosts {
+			storiesToPublish = storiesToPublish[:cfg.Feed.Tier1MaxPosts]
+		}
+		log.Printf("[Tier %d] Filtered to %d stories (max %dh, cap %d)", tier, len(storiesToPublish), cfg.Feed.Tier1MaxAgeHours, cfg.Feed.Tier1MaxPosts)
+	} else {
+		// Tier 2/3: score, rank, take top N
+		var scored []scorer.ScoredStory
+		for _, story := range uniqueStories {
+			scored = append(scored, scorer.Score(story, cfg.Feed.Keywords))
+		}
+		ranked := scorer.Rank(scored)
+		topStories := scorer.TopN(ranked, cfg.Feed.MaxPosts)
+		for _, s := range topStories {
+			storiesToPublish = append(storiesToPublish, s.Story)
+		}
+		log.Printf("[Tier %d] Top %d stories selected", tier, len(storiesToPublish))
+	}
 
 	count := 0
-	for _, story := range topStories {
-		if done, err := publishIfNew(ctx, pub, st, story.Story, keywords, publishEnabled); err != nil {
-			log.Printf("Error publishing tier story: %v", err)
+	for _, story := range storiesToPublish {
+		if done, err := publishIfNew(ctx, pub, st, story, cfg.Feed.Keywords, cfg.Telegram.PublishEnabled); err != nil {
+			log.Printf("[Tier %d] Error publishing: %v", tier, err)
 			continue
 		} else if done {
 			count++
-			if err := waitDelay(ctx, delay); err != nil {
+			if err := waitDelay(ctx, cfg.Feed.PublishDelay); err != nil {
 				return count
 			}
 		}
