@@ -4,9 +4,12 @@ services:
   silicon-brief:
     build: .
     container_name: silicon-brief
+
     env_file:
       - .env
+
     volumes:
-      - ./data:/app/data
-      - ./silicon-brief.db:/app/silicon-brief.db
+      - ./data:/root/data
+      - ./silicon-brief.db:/root/silicon-brief.db
+
     restart: unless-stopped
